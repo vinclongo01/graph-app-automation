@@ -62,17 +62,21 @@ class GraphClient:
         if select_fields is None:
             select_fields = ["id", "displayName"]
 
-        # Simple GET request without query parameters
-        result = await self.client.application_templates.get()
+        try:
+            # Simple GET request without query parameters
+            result = await self.client.application_templates.get()
 
-        # Return only selected fields (post-filtering)
-        return [
-            {
-                field.strip(): getattr(template, field.strip(), None)
-                for field in select_fields
-            }
-            for template in result.value
-        ] if result and result.value else []
+            # Return only selected fields (post-filtering)
+            return [
+                {
+                    field.strip(): getattr(template, field.strip(), None)
+                    for field in select_fields
+                }
+                for template in result.value
+            ] if result and result.value else []
+        except Exception as e:
+            print(f"Error retrieving application templates: {e}")
+            return []
 
     async def instantiate_application(self, template_id: str, display_name: str, select_fields_sp: list = None, select_fields_app: list = None):
         """
@@ -94,43 +98,43 @@ class GraphClient:
                 with only the selected fields, or None if instantiation fails.
         """
 
-        request_body = InstantiatePostRequestBody(
-            display_name=display_name,
-        )
+        try:
+            request_body = InstantiatePostRequestBody(
+                display_name=display_name,
+            )
+            result = await self.client.application_templates.by_application_template_id(template_id).instantiate.post(request_body)
 
-        result = await self.client.application_templates.by_application_template_id(template_id).instantiate.post(request_body)
+            if not result or not result.value:
+                return None
 
-        if select_fields_sp is None:
-            select_fields_sp = ["id", "appId", "displayName"]
-        if select_fields_app is None:
-            select_fields_app = ["id", "appId", "displayName"]
+            # Important Note: The result is a complete object with both application and servicePrincipal objects of the instantiated application.
+            # So we can directly access all information from the result (e.g. delegatedPermissions from oauth2PermissionScopes in the servicePrincipal object).
+            # Return only selected fields (post-filtering)
 
+            data = result.value
+            # Extract ServicePrincipal object from the result
+            servicePrincipal = data.get('servicePrincipal', {})
+            # Extract Application object from the result
+            application = data.get('application', {})
 
-        # Important Note: The result is a complete object with both application and servicePrincipal objects of the instantiated application.
-        # So we can directly access all information from the result (e.g. delegatedPermissions from oauth2PermissionScopes in the servicePrincipal object).
-        # Return only selected fields (post-filtering)
+            if len(servicePrincipal) == 0 or len(application) == 0:
+                return None
+            
+            # Filter only selected fields from the servicePrincipal and application objects
+            # filter function to filter fields from the servicePrincipal and application objects
+            def filter_fields(obj: dict, fields: list):
+                return {field.strip(): obj.get(field.strip()) for field in fields} if fields > 0 else obj # if fields is empty, return the whole object
+            
 
-        if not result or not result.value:
+            # If fields are specified, filter the objects otherwise return the whole object
+            return {
+                "servicePrincipal": filter_fields(servicePrincipal, select_fields_sp),
+                "application": filter_fields(application, select_fields_app)
+            }
+
+        except Exception as e:
+            print(f"Error instantiating application from template {template_id}: {e}")
             return None
-
-        data = result.value
-        # Extract ServicePrincipal object from the result
-        servicePrincipal = data.get('servicePrincipal', {})
-        # Extract Application object from the result
-        application = data.get('application', {})
-
-        if len(servicePrincipal) == 0 or len(application) == 0:
-            return None
-        
-        # Filter only selected fields from the servicePrincipal and application objects
-        # filter function to filter fields from the servicePrincipal and application objects
-        def filter_fields(obj: dict, fields: list):
-            return {field.strip(): obj.get(field.strip()) for field in fields}
-
-        return {
-            "servicePrincipal": filter_fields(servicePrincipal, select_fields_sp),
-            "application": filter_fields(application, select_fields_app)
-        }
 
     async def get_service_principal(self, service_principal_id: str):
         """
@@ -161,3 +165,24 @@ class GraphClient:
             list or None: A list of OAuth2 permission grant objects if any exist, else None.
         """
         pass
+
+    async def delete_service_principal(self, service_principal_id: str):
+        """
+        Delete a specific Service Principal by its ID.
+
+        HTTP method: DELETE
+        Endpoint: /servicePrincipals/{service_principal_id}
+
+        Args:
+            service_principal_id (str): The unique identifier of the Service Principal to delete.
+
+        Returns:
+            bool: True if deletion was successful, False otherwise.
+        """
+
+        try:
+            await self.client.service_principals.by_service_principal_id(service_principal_id).delete()
+            return True
+        except Exception as e:
+            print(f"Error deleting Service Principal {service_principal_id}: {e}")
+            return False
