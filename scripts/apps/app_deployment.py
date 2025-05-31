@@ -12,7 +12,7 @@ def get_template_ids(client: GraphClient):
         list: List of application template IDs.
     """
     templates = client.list_application_template(["id"])
-    return [template['id'] for template in templates]
+    return [(template['id'], template['displayName']) for template in templates]
 
 def get_app_info(client: GraphClient, template_id: str, display_name: str):
     """
@@ -44,4 +44,26 @@ if __name__ == "__main__":
 
     template_ids = get_template_ids(client)
 
+    # Initialize the list of dictionaries to store the app_info of each instantiated application
+    app_info_list = []
 
+    if not template_ids:
+        print("No application templates found.")
+    else:
+        print("Available application templates:")
+        for template_id, display_name in template_ids:
+            print(f"- {template_id}: {display_name}")
+            
+            display_name_sp = f"{display_name} Service Principal"
+
+            print(f"Instantiating application template {template_id} with display name '{display_name_sp}'...")
+            app_info = get_app_info(client, template_id, display_name_sp)
+            if app_info:
+                print(f"Application instantiated successfully: {app_info['application']['id']}")
+                # Append the app_info to the list
+                app_info_list.append(app_info)
+            else:
+                print("Failed to instantiate application.")
+
+    # Do something with the app_info_list
+    print(f"Total applications instantiated: {len(app_info_list)}")
