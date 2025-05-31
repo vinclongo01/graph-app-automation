@@ -1,7 +1,8 @@
+import asyncio
 from utils.graph_client import GraphClient
 
 
-def get_template_ids(client: GraphClient):
+async def get_template_ids(client: GraphClient):
     """
     Retrieve the list of available application templates from Microsoft Entra App Gallery.
 
@@ -11,10 +12,10 @@ def get_template_ids(client: GraphClient):
     Returns:
         list: List of application template IDs.
     """
-    templates = client.list_application_template(["id"])
+    templates = await client.list_application_template(["id"])
     return [(template['id'], template['displayName']) for template in templates]
 
-def get_app_info(client: GraphClient, template_id: str, display_name: str):
+async def get_app_info(client: GraphClient, template_id: str, display_name: str):
     """
     Instantiate a new application from a given application template in Microsoft Entra.
 
@@ -27,22 +28,32 @@ def get_app_info(client: GraphClient, template_id: str, display_name: str):
         dict: A dictionary containing filtered 'servicePrincipal' and 'application' objects
               with only the selected fields.
     """
-    result = client.instantiate_application(template_id, display_name, None, None) # return the whole service principal and application objects
+    result = await client.instantiate_application(template_id, display_name, None, None) # return the whole service principal and application objects
+
+    if not result:
+        print(f"Failed to instantiate application from template {template_id}.")
+        return None
 
     # remove the servicePrincipal from the tenant
     service_principal_id = result['servicePrincipal']['id']
-    if client.delete_service_principal(service_principal_id):
+    if await client.delete_service_principal(service_principal_id):
         print(f"Service Principal {service_principal_id} deleted successfully.")
     else:
         print(f"Failed to delete Service Principal {service_principal_id}.")
     
     return result
 
-if __name__ == "__main__":
+async def main():
+    """
+    Main entry point for the application deployment script.
+    An asynchronous function that retrieves application templates,
+    instantiates applications from those templates, and collects their information.
+    It prints the total number of applications instantiated at the end.
+    """
 
     client = GraphClient()
 
-    template_ids = get_template_ids(client)
+    template_ids = await get_template_ids(client)
 
     # Initialize the list of dictionaries to store the app_info of each instantiated application
     app_info_list = []
@@ -57,7 +68,7 @@ if __name__ == "__main__":
             display_name_sp = f"{display_name} Service Principal"
 
             print(f"Instantiating application template {template_id} with display name '{display_name_sp}'...")
-            app_info = get_app_info(client, template_id, display_name_sp)
+            app_info = await get_app_info(client, template_id, display_name_sp)
             if app_info:
                 print(f"Application instantiated successfully: {app_info['application']['id']}")
                 # Append the app_info to the list
@@ -67,3 +78,7 @@ if __name__ == "__main__":
 
     # Do something with the app_info_list
     print(f"Total applications instantiated: {len(app_info_list)}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
