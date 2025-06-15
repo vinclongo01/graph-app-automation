@@ -44,6 +44,40 @@ class GraphClient:
         # the client application to interact with Microsoft Graph API
         self.client = GraphServiceClient(credentials=self.credential, scopes=self.scopes)
 
+    async def get_users(self, select_fields: list = None):
+        """
+        Retrieve a list of users from Microsoft Entra.
+
+        HTTP method: GET
+        Endpoint: /users
+
+        Args:
+            select_fields (list, optional): List of fields to include in the output dictionaries.
+                Defaults to ['id', 'displayName'].
+
+        Returns:
+            list of dict: List of users with only the selected fields included.
+        """
+
+        if select_fields is None:
+            select_fields = ["id", "displayName"]
+
+        try:
+            # Simple GET request without query parameters
+            result = await self.client.users.get()
+
+            # Return only selected fields (post-filtering)
+            return [
+                {
+                    field.strip(): getattr(user, field.strip(), None)
+                    for field in select_fields
+                }
+                for user in result.value
+            ] if result and result.value else []
+        except Exception as e:
+            print(f"Error retrieving users: {e}")
+            return []
+
     async def list_application_template(self, select_fields: list = None):
         """
         Retrieve the list of available application templates from Microsoft Entra App Gallery.
@@ -53,18 +87,21 @@ class GraphClient:
 
         Args:
             select_fields (list, optional): List of fields to include in the output dictionaries.
-                Defaults to ['id', 'displayName'].
+                Defaults to ['id', 'display_name'].
 
         Returns:
             list of dict: List of application templates with only the selected fields included.
         """
 
         if select_fields is None:
-            select_fields = ["id", "displayName"]
+            select_fields = ["id", "display_name"]
 
         try:
             # Simple GET request without query parameters
             result = await self.client.application_templates.get()
+
+
+            #print(f"DEBUG: {result.value[0]}") # Debugging line to inspect the first template object
 
             # Return only selected fields (post-filtering)
             return [
@@ -89,9 +126,9 @@ class GraphClient:
             template_id (str): The ID of the application template to instantiate.
             display_name (str): The display name to assign to the new application.
             select_fields_sp (list, optional): List of fields to include from the servicePrincipal object.
-                Defaults to ['id', 'appId', 'displayName'].
+                If None, returns the whole object.
             select_fields_app (list, optional): List of fields to include from the application object.
-                Defaults to ['id', 'appId', 'displayName'].
+                If None, returns the whole object.
 
         Returns:
             dict or None: A dictionary containing filtered 'servicePrincipal' and 'application' objects
@@ -104,26 +141,31 @@ class GraphClient:
             )
             result = await self.client.application_templates.by_application_template_id(template_id).instantiate.post(request_body)
 
-            if not result or not result.value:
+            if not result:
                 return None
 
             # Important Note: The result is a complete object with both application and servicePrincipal objects of the instantiated application.
             # So we can directly access all information from the result (e.g. delegatedPermissions from oauth2PermissionScopes in the servicePrincipal object).
             # Return only selected fields (post-filtering)
 
-            data = result.value
             # Extract ServicePrincipal object from the result
-            servicePrincipal = data.get('servicePrincipal', {})
+            servicePrincipal = result.service_principal
             # Extract Application object from the result
-            application = data.get('application', {})
+            application = result.application
 
-            if len(servicePrincipal) == 0 or len(application) == 0:
+            if not servicePrincipal or not application:
                 return None
+            
+            # convert to dictionary if they are not already
+            if not isinstance(servicePrincipal, dict):
+                servicePrincipal = servicePrincipal.to_dict() if hasattr(servicePrincipal, 'to_dict') else servicePrincipal
+            if not isinstance(application, dict):
+                application = application.to_dict() if hasattr(application, 'to_dict') else application
             
             # Filter only selected fields from the servicePrincipal and application objects
             # filter function to filter fields from the servicePrincipal and application objects
             def filter_fields(obj: dict, fields: list):
-                return {field.strip(): obj.get(field.strip()) for field in fields} if fields > 0 else obj # if fields is empty, return the whole object
+                return {field.strip(): obj.get(field.strip()) for field in fields} if fields else obj # if fields is empty, return the whole object
             
 
             # If fields are specified, filter the objects otherwise return the whole object
@@ -133,7 +175,7 @@ class GraphClient:
             }
 
         except Exception as e:
-            print(f"Error instantiating application from template {template_id}: {e}")
+            #print(f"DEBUG: Error instantiating application from template {template_id}: {e}") 
             return None
 
     async def get_service_principal(self, service_principal_id: str):
@@ -184,5 +226,5 @@ class GraphClient:
             await self.client.service_principals.by_service_principal_id(service_principal_id).delete()
             return True
         except Exception as e:
-            print(f"Error deleting Service Principal {service_principal_id}: {e}")
+            #print(f"DEBUG: Error deleting Service Principal {service_principal_id}: {e}")
             return False
