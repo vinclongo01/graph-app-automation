@@ -111,15 +111,6 @@ After completion, the collected data will be available under the `data/` directo
 
 ---
 
-## Next Steps
-
-* Analyze the permissions of instantiated applications
-* Export and transform data to CSV or DataFrames
-* Define rules to classify applications as **benign** or **malicious** based on permission sets
-* Integrate with Microsoft Sentinel for threat correlation
-
----
-
 ## Notes
 
 The project is modular and structured for extension. You can reuse the `GraphClient` in other scripts (e.g., for audit logs or user analysis).
